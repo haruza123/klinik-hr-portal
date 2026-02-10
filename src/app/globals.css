@@ -1,26 +1,82 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
+/* 1. Definisi Warna & Variabel (Light Mode Only) */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0f172a; /* Slate 900 */
+  --emerald-primary: #059669;
+  --slate-subtle: #f8fafc;
 }
 
+/* 2. Konfigurasi Theme Tailwind v4 */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-brand: var(--emerald-primary);
+  --color-muted: var(--slate-subtle);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* 3. Base Styles */
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 4. Tiptap Editor Styling (Agar Admin Nyaman Ngetik) */
+.ProseMirror {
+  outline: none;
+  min-height: 200px;
+  padding: 1rem;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #94a3b8;
+  pointer-events: none;
+  height: 0;
+}
+
+/* 5. Custom Typography - prose-emerald (Putih/Emerald/Slate) */
+.prose-emerald,
+.prose-emerald.prose {
+  max-width: none;
+  --tw-prose-body: #334155;
+  --tw-prose-headings: #0f172a;
+  --tw-prose-links: #059669;
+  --tw-prose-bold: #0f172a;
+  --tw-prose-counters: #059669;
+  --tw-prose-bullets: #059669;
+  --tw-prose-quote: #0f172a;
+  --tw-prose-quote-borders: #10b981;
+}
+.prose-emerald a {
+  color: #059669;
+}
+.prose-emerald a:hover {
+  color: #047857;
+}
+
+.prose p {
+  line-height: 1.8;
+  margin-bottom: 1.5rem;
+  color: #334155; /* Slate 700 */
+}
+
+.prose img {
+  border-radius: 1rem;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  margin: 2rem auto;
+}
+
+/* 6. Hilangkan Efek Fokus yang Mengganggu */
+*:focus {
+  outline: none;
 }
