@@ -57,7 +57,19 @@ export default function Home() {
           .limit(30),
       ]);
       if (!catRes.error) setCategories(catRes.data ?? []);
-      if (!qRes.error) setQuestions((qRes.data ?? []) as Question[]);
+      if (!qRes.error) {
+        const normalizedQuestions: Question[] = (qRes.data ?? []).map((q: any) => ({
+          id: q.id,
+          slug: q.slug,
+          question_text: q.question_text,
+          answer: q.answer,
+          categories:
+            q.categories && Array.isArray(q.categories) && q.categories.length > 0
+              ? { name: q.categories[0].name }
+              : null,
+        }));
+        setQuestions(normalizedQuestions);
+      }
       setLoading(false);
     }
     fetchData();
