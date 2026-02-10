@@ -36,6 +36,8 @@ export default async function SolusiPage({ params }: Props) {
     .order('created_at', { ascending: false })
     .limit(5);
 
+  const relatedQuestionsSafe = relatedQuestions ?? [];
+
   const whatsappUrl = `https://wa.me/628XXXXXXXXXX?text=${encodeURIComponent(
     `Halo Pak Dadi, saya ingin bertanya mengenai: ${question.question_text}`
   )}`;
@@ -159,9 +161,9 @@ export default async function SolusiPage({ params }: Props) {
               {/* Pertanyaan Terkait */}
               <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-semibold text-slate-900 mb-4">Pertanyaan Terkait</h2>
-                {relatedQuestions.length > 0 ? (
+                {relatedQuestionsSafe.length > 0 ? (
                   <ul className="space-y-3">
-                    {relatedQuestions.map((q) => {
+                    {relatedQuestionsSafe.map((q) => {
                       const qSlug = (q as { slug?: string }).slug ?? q.id;
                       return (
                         <li key={q.id}>
