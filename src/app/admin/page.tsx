@@ -24,7 +24,8 @@ interface Question {
   question_order: number;
   is_required: boolean;
   created_at: string;
-  categories?: { name: string } | null;
+  // categories?: { name: string } | null;
+  categories: any;
 }
 
 export default function AdminPage() {
@@ -66,12 +67,28 @@ export default function AdminPage() {
     if (!error) setCategories(data ?? []);
   }
 
+  // async function fetchQuestions() {
+  //   const { data, error } = await supabase
+  //     .from('questions')
+  //     .select('id, slug, category_id, question_text, answer, question_order, is_required, created_at, categories ( name )')
+  //     .order('created_at', { ascending: false });
+  //   if (!error) setQuestions(data ?? []);
+  //   setLoading(false);
+  // }
   async function fetchQuestions() {
     const { data, error } = await supabase
       .from('questions')
       .select('id, slug, category_id, question_text, answer, question_order, is_required, created_at, categories ( name )')
       .order('created_at', { ascending: false });
-    if (!error) setQuestions(data ?? []);
+
+    if (!error && data) {
+      // Normalisasi: Ambil objek pertama jika categories berupa array
+      const normalizedData = data.map((q: any) => ({
+        ...q,
+        categories: Array.isArray(q.categories) ? q.categories[0] : q.categories
+      }));
+      setQuestions(normalizedData);
+    }
     setLoading(false);
   }
 
