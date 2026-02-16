@@ -5,10 +5,14 @@
 CREATE TABLE IF NOT EXISTS categories (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
+  slug VARCHAR(255) UNIQUE,
   description TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
+
+-- Jika tabel categories sudah ada tanpa kolom slug, jalankan:
+-- ALTER TABLE categories ADD COLUMN IF NOT EXISTS slug VARCHAR(255) UNIQUE;
 
 -- Tabel questions (relasi ke categories)
 CREATE TABLE IF NOT EXISTS questions (
@@ -44,3 +48,18 @@ CREATE TRIGGER update_questions_updated_at
   BEFORE UPDATE ON questions
   FOR EACH ROW
   EXECUTE PROCEDURE update_updated_at_column();
+
+-- Tabel inquiries (pertanyaan dari pengunjung)
+CREATE TABLE IF NOT EXISTS inquiries (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  question TEXT NOT NULL,
+  email VARCHAR(255),
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_inquiries_created_at ON inquiries(created_at DESC);
+
+-- Policy: izinkan siapa saja insert (pengunjung), hanya authenticated yang bisa baca (admin)
+-- ALTER TABLE inquiries ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "Allow anonymous insert" ON inquiries FOR INSERT TO anon WITH CHECK (true);
+-- CREATE POLICY "Allow authenticated read" ON inquiries FOR SELECT TO authenticated USING (true);

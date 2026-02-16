@@ -1,5 +1,11 @@
 import Link from 'next/link';
 import { Header } from '@/components/Header';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Cek Dokumen Kerja',
+  description: 'Validasi kontrak kerja, surat peringatan, dan dokumen ketenagakerjaan Anda.',
+};
 
 export default function CekDokumenPage() {
   return (

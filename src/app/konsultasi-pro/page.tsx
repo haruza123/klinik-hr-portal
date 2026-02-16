@@ -1,5 +1,11 @@
 import Link from 'next/link';
 import { Header } from '@/components/Header';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Konsultasi Pro',
+  description: 'Layanan premium konsultasi mendalam dengan tim ahli HR untuk kasus kompleks.',
+};
 
 export default function KonsultasiProPage() {
   return (

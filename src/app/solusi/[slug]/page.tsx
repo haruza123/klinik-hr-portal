@@ -1,14 +1,46 @@
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { ChevronRight, MessageCircle, Shield, FileCheck } from 'lucide-react';
+import { ChevronRight, MessageCircle, Calculator } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { notFound } from 'next/navigation';
+import type { Metadata } from 'next';
 
 interface Props {
   params: Promise<{ slug: string }>;
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function stripHtml(html: string, maxLength = 160): string {
+  const text = html.replace(/<[^>]*>/g, '').trim().replace(/\s+/g, ' ');
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength)}...`;
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params;
+  const isUuid = UUID_REGEX.test(slug);
+  const query = supabase
+    .from('questions')
+    .select('question_text, answer, categories ( name )')
+    .order('created_at', { ascending: false });
+  const { data: question, error } = isUuid
+    ? await query.eq('id', slug).single()
+    : await query.eq('slug', slug).single();
+  if (error || !question) {
+    return { title: 'Solusi tidak ditemukan' };
+  }
+  const category = question.categories as { name?: string } | null;
+  const categoryName = category?.name ?? 'Solusi';
+  return {
+    title: question.question_text,
+    description: stripHtml(question.answer || ''),
+    openGraph: {
+      title: question.question_text,
+      description: stripHtml(question.answer || '', 120),
+      type: 'article',
+    },
+  };
+}
 
 export default async function SolusiPage({ params }: Props) {
   const { slug } = await params;
@@ -42,8 +74,27 @@ export default async function SolusiPage({ params }: Props) {
     `Halo Pak Dadi, saya ingin bertanya mengenai: ${question.question_text}`
   )}`;
 
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: [
+      {
+        '@type': 'Question',
+        name: question.question_text,
+        acceptedAnswer: {
+          '@type': 'Answer',
+          text: stripHtml(question.answer || 'Belum ada jawaban.'),
+        },
+      },
+    ],
+  };
+
   return (
     <div className="min-h-screen bg-white">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
       <Header />
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
@@ -118,45 +169,25 @@ export default async function SolusiPage({ params }: Props) {
           {/* Sidebar */}
           <aside className="lg:col-span-1 space-y-6">
             <div className="sticky top-24 space-y-6">
-              {/* Konsultasi Pro - Monetisasi */}
-              <div className="rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <Shield className="h-5 w-5 text-emerald-600" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
-                    Layanan Premium
-                  </span>
+              {/* Kalkulator HR */}
+              <Link
+                href="/kalkulator"
+                className="flex items-center gap-3 rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 transition-colors hover:border-emerald-300 hover:from-emerald-100"
+              >
+                <div className="shrink-0 rounded-xl bg-emerald-100 p-2.5 text-emerald-700">
+                  <Calculator className="h-5 w-5" />
                 </div>
-                <h3 className="font-semibold text-slate-900 mb-2">Konsultasi Pro</h3>
-                <p className="text-sm text-slate-600 mb-4">
-                  Konsultasi mendalam dengan tim ahli HR untuk kasus kompleks. Dukungan dokumen & follow-up.
-                </p>
-                <a
-                  href="/konsultasi-pro"
-                  className="block w-full text-center rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700 transition-colors"
-                >
-                  Mulai Konsultasi Pro
-                </a>
-              </div>
-
-              {/* Pro Tools - Cek Dokumen Kerja */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex items-center gap-2 mb-3">
-                  <FileCheck className="h-5 w-5 text-emerald-600" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
-                    Pro Tools
+                <div className="min-w-0">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+                    Tool
                   </span>
+                  <h3 className="font-semibold text-slate-900 mt-0.5">Kalkulator HR</h3>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Hitung pesangon, UPMK & UPH
+                  </p>
                 </div>
-                <h3 className="font-semibold text-slate-900 mb-2">Cek Dokumen Kerja</h3>
-                <p className="text-sm text-slate-600 mb-4">
-                  Validasi kontrak kerja, surat peringatan, dan dokumen ketenagakerjaan Anda.
-                </p>
-                <a
-                  href="/cek-dokumen"
-                  className="block w-full text-center rounded-xl border-2 border-emerald-600 px-4 py-3 text-sm font-semibold text-emerald-600 hover:bg-emerald-50 transition-colors"
-                >
-                  Cek Dokumen Sekarang
-                </a>
-              </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+              </Link>
 
               {/* Pertanyaan Terkait */}
               <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -180,6 +211,28 @@ export default async function SolusiPage({ params }: Props) {
                 ) : (
                   <p className="text-sm text-slate-500">Belum ada pertanyaan lain di kategori ini.</p>
                 )}
+              </div>
+
+              {/* Profil singkat Pak Dadi - compact */}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-12 w-12 shrink-0 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-lg font-semibold">
+                    D
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900 text-sm">Pak Dadi</p>
+                    <p className="text-xs text-emerald-600 font-medium">Konsultan HR</p>
+                  </div>
+                </div>
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 flex items-center justify-center gap-1.5 w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  Konsultasi via WA
+                </a>
               </div>
             </div>
           </aside>

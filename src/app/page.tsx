@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { Search, Wallet, FileText, Users, ChevronRight, Loader2, Star } from 'lucide-react';
 import { Header } from '@/components/Header';
+import { FormAjukanPertanyaan } from '@/components/FormAjukanPertanyaan';
 
 interface Category {
   id: string;
@@ -18,6 +19,13 @@ interface Question {
   question_text: string;
   answer: string | null;
   categories: { name: string } | null;
+}
+
+function getAnswerPreview(answer: string | null, maxLength = 100) {
+  if (!answer) return 'Belum ada jawaban.';
+  const plain = answer.replace(/<[^>]*>/g, '').trim();
+  if (plain.length <= maxLength) return plain;
+  return `${plain.slice(0, maxLength)}...`;
 }
 
 const CATEGORY_ICONS: Record<string, typeof Wallet> = {
@@ -43,6 +51,8 @@ export default function Home() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [search, setSearch] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchResults, setSearchResults] = useState<Question[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const searchRef = useRef<HTMLDivElement>(null);
 
@@ -76,17 +86,82 @@ export default function Home() {
   }, []);
 
   const searchTerm = search.trim().toLowerCase();
-  const suggestions = searchTerm
-    ? questions.filter(
-        (q) =>
-          q.question_text.toLowerCase().includes(searchTerm) ||
-          q.categories?.name?.toLowerCase().includes(searchTerm) ||
-          (q.answer && q.answer.replace(/<[^>]*>/g, '').toLowerCase().includes(searchTerm))
-      )
-    : [];
-  const showSuggestions = searchFocused && (searchTerm ? suggestions.length > 0 : questions.slice(0, 5).length > 0);
+  const showSuggestions =
+    searchFocused &&
+    (searchTerm
+      ? searchTerm.length >= 3
+      : questions.slice(0, 5).length > 0);
+
+  // Smart Suggestion - debounced Supabase search
+  useEffect(() => {
+    if (searchTerm.length < 3) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      return;
+    }
+
+    let active = true;
+    setSearchLoading(true);
+
+    const handler = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('questions')
+          .select('id, slug, question_text, answer, categories ( name )')
+          .or(
+            `question_text.ilike.%${searchTerm}%,answer.ilike.%${searchTerm}%`
+          )
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        if (!active) return;
+
+        if (error || !data) {
+          setSearchResults([]);
+        } else {
+          const normalized: Question[] = data.map((q: any) => ({
+            id: q.id,
+            slug: q.slug,
+            question_text: q.question_text,
+            answer: q.answer,
+            categories:
+              q.categories && Array.isArray(q.categories) && q.categories.length > 0
+                ? { name: q.categories[0].name }
+                : null,
+          }));
+          setSearchResults(normalized);
+        }
+      } finally {
+        if (active) {
+          setSearchLoading(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      active = false;
+      clearTimeout(handler);
+    };
+  }, [searchTerm]);
 
   const featuredQuestions = questions.slice(0, 4);
+
+  // Pilih 3 pertanyaan terbaru dengan kategori berbeda
+  const primaryFeaturedQuestions: Question[] = (() => {
+    const seen = new Set<string>();
+    const result: Question[] = [];
+    for (const q of questions) {
+      const catName = q.categories?.name ?? 'Lainnya';
+      if (seen.has(catName)) continue;
+      seen.add(catName);
+      result.push(q);
+      if (result.length >= 3) break;
+    }
+    if (result.length < 3) {
+      return questions.slice(0, 3);
+    }
+    return result;
+  })();
 
   // Kelompokkan solusi per kategori untuk seksi (3-4 artikel terbaru per kategori)
   const byCategory = (() => {
@@ -122,17 +197,17 @@ export default function Home() {
       <Header />
 
       <main>
-        {/* Hero + Smart Search */}
-        <section className="relative border-b border-slate-100 bg-slate-50/50 px-4 py-16 sm:py-24">
-          <div className="mx-auto max-w-3xl text-center">
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+        {/* Hero + Smart Search - full width search + safe area on mobile */}
+        <section className="relative border-b border-slate-100 bg-slate-50/50 py-16 sm:py-24 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pl-4 sm:pr-4">
+          <div className="mx-auto max-w-3xl text-center w-full">
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-3xl md:text-4xl">
               Klinik HR Indonesia
             </h1>
             <p className="mt-3 text-lg text-slate-600">
               Referensi & solusi praktis masalah ketenagakerjaan
             </p>
-            <div className="mt-10 relative" ref={searchRef}>
-              <div className="relative">
+            <div className="mt-10 relative w-full" ref={searchRef}>
+              <div className="relative w-full">
                 <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
                 <input
                   type="search"
@@ -141,17 +216,23 @@ export default function Home() {
                   onFocus={() => setSearchFocused(true)}
                   onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
                   placeholder="Cari solusi masalah HR..."
-                  className="w-full rounded-xl border border-slate-200 bg-white py-4 pl-12 pr-4 text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  className="w-full rounded-2xl border border-slate-200 bg-white py-4 pl-12 pr-4 text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                   aria-label="Cari solusi HR"
                   aria-autocomplete="list"
                   aria-expanded={showSuggestions}
                 />
               </div>
               {showSuggestions && (
-                <div className="absolute top-full left-0 right-0 z-20 mt-2 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                <div className="absolute top-full left-0 right-0 z-20 mt-2 max-h-80 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-lg">
                   {searchTerm ? (
-                    suggestions.length > 0 ? (
-                      suggestions.slice(0, 8).map((q) => (
+                    searchTerm.length < 3 ? (
+                      <div className="px-4 py-3 text-sm text-slate-500 text-left">
+                        Ketik minimal <span className="font-semibold text-emerald-600">3 karakter</span> untuk mencari.
+                      </div>
+                    ) : searchLoading ? (
+                      <div className="px-4 py-6 text-center text-slate-500 text-sm">Mencari solusi...</div>
+                    ) : searchResults.length > 0 ? (
+                      searchResults.slice(0, 8).map((q) => (
                         <Link
                           key={q.id}
                           href={`/solusi/${q.slug ?? q.id}`}
@@ -164,7 +245,9 @@ export default function Home() {
                         </Link>
                       ))
                     ) : (
-                      <div className="px-4 py-6 text-center text-slate-500">Tidak ada hasil</div>
+                      <div className="px-4 py-6 text-center text-slate-500 text-sm">
+                        Tidak ada hasil. Ajukan pertanyaan di bawah halaman.
+                      </div>
                     )
                   ) : (
                     <>
@@ -197,30 +280,38 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Featured - Solusi Unggulan */}
-        {!loading && featuredQuestions.length > 0 && (
+        {/* Solusi Utama - Featured Section */}
+        {!loading && primaryFeaturedQuestions.length > 0 && (
           <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-            <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-900">
-              <Star className="h-5 w-5 text-emerald-600" />
-              Solusi Unggulan
+            <h2 className="flex items-center gap-2 text-2xl font-semibold text-slate-900">
+              <Star className="h-6 w-6 text-emerald-600" />
+              Solusi Utama
             </h2>
-            <p className="mt-1 text-slate-600">Artikel terbaru dari tim HR</p>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              {featuredQuestions.map((q) => (
+            <p className="mt-1 text-slate-600">
+              Tiga solusi pilihan dengan kategori berbeda untuk memulai.
+            </p>
+            <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {primaryFeaturedQuestions.map((q) => (
                 <Link
                   key={q.id}
                   href={`/solusi/${q.slug ?? q.id}`}
-                  className="group flex gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:border-emerald-200 hover:shadow-md"
+                  className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-md transition-transform transition-shadow duration-200 hover:border-emerald-200 hover:shadow-lg hover:-translate-y-1"
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-slate-900 group-hover:text-emerald-700 line-clamp-2">
-                      {q.question_text}
-                    </p>
-                    {q.categories?.name && (
-                      <span className="mt-2 inline-block text-sm text-emerald-600">{q.categories.name}</span>
-                    )}
-                  </div>
-                  <ChevronRight className="h-5 w-5 shrink-0 text-slate-400 group-hover:text-emerald-500" />
+                  {q.categories?.name && (
+                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                      {q.categories.name}
+                    </span>
+                  )}
+                  <h3 className="mt-3 text-lg sm:text-xl font-semibold text-slate-900 line-clamp-2 group-hover:text-emerald-700">
+                    {q.question_text}
+                  </h3>
+                  <p className="mt-3 text-sm text-slate-600 line-clamp-3">
+                    {getAnswerPreview(q.answer)}
+                  </p>
+                  <span className="mt-4 inline-flex items-center text-sm font-medium text-emerald-600 group-hover:text-emerald-700">
+                    Baca selengkapnya
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </span>
                 </Link>
               ))}
             </div>
@@ -237,58 +328,153 @@ export default function Home() {
                 <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
               </div>
             ) : categories.length > 0 ? (
-              <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {categories.map((cat) => {
-                  const Icon = getCategoryIcon(cat.name);
-                  return (
-                    <Link
-                      key={cat.id}
-                      href={`/?kategori=${encodeURIComponent(cat.name)}`}
-                      className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:border-emerald-200 hover:shadow-md"
-                    >
-                      <div className="rounded-xl bg-emerald-100 p-3 text-emerald-700">
-                        <Icon className="h-6 w-6" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-slate-900">{cat.name}</h3>
-                        <p className="mt-1 text-sm text-slate-600">
-                          {cat.description || 'Lihat pertanyaan di kategori ini'}
-                        </p>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
+              <>
+                {/* Mobile: horizontal scroll, kartu compact, ikon di atas teks */}
+                <div className="mt-8 md:hidden relative -mx-4 px-4">
+                  <div className="flex gap-3 overflow-x-auto overflow-y-hidden pb-2 scrollbar-hide snap-x snap-mandatory">
+                    {categories.map((cat) => {
+                      const Icon = getCategoryIcon(cat.name);
+                      return (
+                        <Link
+                          key={cat.id}
+                          href={`/?kategori=${encodeURIComponent(cat.name)}`}
+                          className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-emerald-200 hover:shadow-md flex-shrink-0 w-[120px] snap-start"
+                        >
+                          <div className="rounded-lg bg-emerald-100 p-2.5 text-emerald-700">
+                            <Icon className="h-5 w-5" />
+                          </div>
+                          <h3 className="mt-2 text-xs font-semibold text-slate-900 text-center line-clamp-2 leading-tight">
+                            {cat.name}
+                          </h3>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                  <div className="pointer-events-none absolute top-0 right-0 bottom-2 w-14 bg-gradient-to-l from-slate-50/95 to-transparent" aria-hidden />
+                </div>
+                {/* Desktop: grid seperti sebelumnya */}
+                <div className="mt-8 hidden md:grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {categories.map((cat) => {
+                    const Icon = getCategoryIcon(cat.name);
+                    return (
+                      <Link
+                        key={cat.id}
+                        href={`/?kategori=${encodeURIComponent(cat.name)}`}
+                        className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:border-emerald-200 hover:shadow-md"
+                      >
+                        <div className="rounded-xl bg-emerald-100 p-3 text-emerald-700">
+                          <Icon className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-slate-900">{cat.name}</h3>
+                          <p className="mt-1 text-sm text-slate-600">
+                            {cat.description || 'Lihat pertanyaan di kategori ini'}
+                          </p>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </>
             ) : (
-              <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {[
-                  { name: 'Gaji & Payroll', desc: 'Informasi penggajian, tunjangan, dan BPJS ketenagakerjaan' },
-                  { name: 'Kontrak Kerja', desc: 'Perjanjian kerja, PKWT, PKWTT, dan regulasi ketenagakerjaan' },
-                  { name: 'Rekrutmen', desc: 'Proses rekrutmen, seleksi, dan onboarding karyawan baru' },
-                ].map((cat) => {
-                  const Icon = getCategoryIcon(cat.name);
-                  return (
-                    <div
-                      key={cat.name}
-                      className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-                    >
-                      <div className="rounded-xl bg-emerald-100 p-3 text-emerald-700">
-                        <Icon className="h-6 w-6" />
+              <>
+                {/* Mobile: horizontal scroll fallback */}
+                <div className="mt-8 md:hidden relative -mx-4 px-4">
+                  <div className="flex gap-3 overflow-x-auto overflow-y-hidden pb-2 scrollbar-hide">
+                    {[
+                      { name: 'Gaji & Payroll', desc: 'Informasi penggajian, tunjangan, dan BPJS ketenagakerjaan' },
+                      { name: 'Kontrak Kerja', desc: 'Perjanjian kerja, PKWT, PKWTT, dan regulasi ketenagakerjaan' },
+                      { name: 'Rekrutmen', desc: 'Proses rekrutmen, seleksi, dan onboarding karyawan baru' },
+                    ].map((cat) => {
+                      const Icon = getCategoryIcon(cat.name);
+                      return (
+                        <Link
+                          key={cat.name}
+                          href={`/?kategori=${encodeURIComponent(cat.name)}`}
+                          className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex-shrink-0 w-[120px]"
+                        >
+                          <div className="rounded-lg bg-emerald-100 p-2.5 text-emerald-700">
+                            <Icon className="h-5 w-5" />
+                          </div>
+                          <h3 className="mt-2 text-xs font-semibold text-slate-900 text-center line-clamp-2 leading-tight">
+                            {cat.name}
+                          </h3>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                  <div className="pointer-events-none absolute top-0 right-0 bottom-2 w-14 bg-gradient-to-l from-slate-50/95 to-transparent" aria-hidden />
+                </div>
+                {/* Desktop: grid fallback */}
+                <div className="mt-8 hidden md:grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {[
+                    { name: 'Gaji & Payroll', desc: 'Informasi penggajian, tunjangan, dan BPJS ketenagakerjaan' },
+                    { name: 'Kontrak Kerja', desc: 'Perjanjian kerja, PKWT, PKWTT, dan regulasi ketenagakerjaan' },
+                    { name: 'Rekrutmen', desc: 'Proses rekrutmen, seleksi, dan onboarding karyawan baru' },
+                  ].map((cat) => {
+                    const Icon = getCategoryIcon(cat.name);
+                    return (
+                      <div
+                        key={cat.name}
+                        className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                      >
+                        <div className="rounded-xl bg-emerald-100 p-3 text-emerald-700">
+                          <Icon className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-slate-900">{cat.name}</h3>
+                          <p className="mt-1 text-sm text-slate-600">{cat.desc}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-semibold text-slate-900">{cat.name}</h3>
-                        <p className="mt-1 text-sm text-slate-600">{cat.desc}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         </section>
 
-        {/* Daftar Solusi per kategori (seksi) */}
-        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+        {/* Daftar Solusi - maksimal 4 terbaru, mobile 1 kolom ramping */}
+        {!loading && featuredQuestions.length > 0 && (
+          <section className="mx-auto max-w-6xl px-4 pb-4 sm:px-6">
+            <h2 className="text-xl font-semibold text-slate-900">Daftar Solusi</h2>
+            <p className="mt-1 text-slate-600">
+              Kumpulan solusi terbaru dari berbagai kategori.
+            </p>
+            <div className="mt-4 md:mt-6 grid grid-cols-1 gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {featuredQuestions.map((q) => (
+                <Link
+                  key={q.id}
+                  href={`/solusi/${q.slug ?? q.id}`}
+                  className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition-all hover:border-emerald-200 hover:shadow-md hover:-translate-y-0.5 sm:p-5"
+                >
+                  {q.categories?.name && (
+                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                      {q.categories.name}
+                    </span>
+                  )}
+                  <p className="mt-1.5 sm:mt-2 font-semibold text-slate-900 group-hover:text-emerald-700 line-clamp-2 text-sm sm:text-base">
+                    {q.question_text}
+                  </p>
+                  <span className="mt-auto pt-2 sm:pt-3 inline-flex items-center text-xs sm:text-sm text-slate-500 group-hover:text-emerald-600">
+                    Baca selengkapnya
+                    <ChevronRight className="ml-1 h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  </span>
+                </Link>
+              ))}
+            </div>
+            <Link
+              href="/solusi"
+              className="mt-4 sm:mt-6 flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3.5 text-sm font-semibold text-white shadow-md hover:bg-emerald-700 transition-colors w-full sm:w-auto sm:inline-flex"
+            >
+              Lihat Semua Solusi
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </section>
+        )}
+
+        {/* Daftar Solusi per kategori (seksi) - mobile 1 kolom ramping */}
+        <section className="mx-auto max-w-6xl px-4 py-8 sm:py-12 sm:px-6">
           {loading ? (
             <div className="flex justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
@@ -296,51 +482,51 @@ export default function Home() {
           ) : categorySections.length === 0 && featuredQuestions.length === 0 ? (
             <p className="text-center text-slate-500">Belum ada pertanyaan.</p>
           ) : (
-            <div className="space-y-14">
+            <div className="space-y-8 md:space-y-14">
               {categorySections.map(({ category, questions: sectionQuestions }) => {
                 const Icon = getCategoryIcon(category.name);
                 return (
                   <div key={category.id}>
-                    <div className="flex flex-wrap items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="rounded-xl bg-emerald-100 p-2.5 text-emerald-700">
-                          <Icon className="h-5 w-5" />
+                    <div className="flex flex-wrap items-center justify-between gap-3 md:gap-4">
+                      <div className="flex items-center gap-2 md:gap-3">
+                        <div className="rounded-lg md:rounded-xl bg-emerald-100 p-2 md:p-2.5 text-emerald-700">
+                          <Icon className="h-4 w-4 md:h-5 md:w-5" />
                         </div>
                         <div>
-                          <h2 className="text-xl font-semibold text-slate-900">
+                          <h2 className="text-lg md:text-xl font-semibold text-slate-900">
                             Seksi {category.name}
                           </h2>
-                          <p className="mt-0.5 text-sm text-slate-600">
+                          <p className="mt-0.5 text-xs md:text-sm text-slate-600 hidden sm:block">
                             {category.description || `Artikel terbaru seputar ${category.name}`}
                           </p>
                         </div>
                       </div>
                       <Link
                         href={`/?kategori=${encodeURIComponent(category.name)}`}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600 bg-white px-4 py-2.5 text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-50"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600 bg-white px-3 py-2 md:px-4 md:py-2.5 text-xs md:text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-50"
                       >
                         Lihat Semua
-                        <ChevronRight className="h-4 w-4" />
+                        <ChevronRight className="h-3.5 w-3.5 md:h-4 md:w-4" />
                       </Link>
                     </div>
-                    <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="mt-3 md:mt-6 grid grid-cols-1 gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
                       {sectionQuestions.map((q) => (
                         <Link
                           key={q.id}
                           href={`/solusi/${q.slug ?? q.id}`}
-                          className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-emerald-200 hover:shadow-md"
+                          className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition-all hover:border-emerald-200 hover:shadow-md sm:p-5"
                         >
-                          <p className="font-semibold text-slate-900 group-hover:text-emerald-700 line-clamp-2">
+                          <p className="font-semibold text-slate-900 group-hover:text-emerald-700 line-clamp-2 text-sm sm:text-base">
                             {q.question_text}
                           </p>
                           {q.categories?.name && (
-                            <span className="mt-2 inline-block text-sm text-emerald-600">
+                            <span className="mt-1.5 sm:mt-2 inline-block text-xs sm:text-sm text-emerald-600">
                               {q.categories.name}
                             </span>
                           )}
-                          <span className="mt-auto pt-3 inline-flex items-center text-sm text-slate-500 group-hover:text-emerald-600">
+                          <span className="mt-auto pt-2 sm:pt-3 inline-flex items-center text-xs sm:text-sm text-slate-500 group-hover:text-emerald-600">
                             Baca selengkapnya
-                            <ChevronRight className="ml-1 h-4 w-4" />
+                            <ChevronRight className="ml-1 h-3.5 w-3.5 sm:h-4 sm:w-4" />
                           </span>
                         </Link>
                       ))}
@@ -350,6 +536,13 @@ export default function Home() {
               })}
             </div>
           )}
+        </section>
+
+        {/* Form Ajukan Pertanyaan */}
+        <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6 border-t border-slate-100">
+          <div className="max-w-2xl">
+            <FormAjukanPertanyaan />
+          </div>
         </section>
       </main>
     </div>

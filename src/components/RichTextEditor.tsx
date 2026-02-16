@@ -10,6 +10,7 @@ import {
   List,
   ListOrdered,
   ImageIcon,
+  Loader2,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -29,12 +30,14 @@ function ToolbarButton({
   disabled,
   icon: Icon,
   title,
+  iconClassName,
 }: {
   onClick: () => void;
   isActive?: boolean;
   disabled?: boolean;
   icon: LucideIcon;
   title: string;
+  iconClassName?: string;
 }) {
   return (
     <button
@@ -50,7 +53,7 @@ function ToolbarButton({
         disabled && 'opacity-50 cursor-not-allowed'
       )}
     >
-      <Icon className="w-4 h-4" />
+      <Icon className={cn('w-4 h-4', iconClassName)} />
     </button>
   );
 }
@@ -62,8 +65,6 @@ export function RichTextEditor({
   className,
   minHeight = 'min-h-[200px]',
 }: RichTextEditorProps) {
-  const [showImageModal, setShowImageModal] = useState(false);
-  const [imageUrl, setImageUrl] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -104,7 +105,10 @@ export function RichTextEditor({
   const setBulletList = useCallback(() => editor?.chain().focus().toggleBulletList().run(), [editor]);
   const setOrderedList = useCallback(() => editor?.chain().focus().toggleOrderedList().run(), [editor]);
 
-  const handleInsertImage = useCallback(() => setShowImageModal(true), []);
+  const handleInsertImage = useCallback(() => {
+    if (uploading) return;
+    fileInputRef.current?.click();
+  }, [uploading]);
 
   const handleUploadImage = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -112,23 +116,23 @@ export function RichTextEditor({
       if (!file || !editor) return;
       if (!file.type.startsWith('image/')) {
         alert('Hanya file gambar yang diperbolehkan.');
+        e.target.value = '';
         return;
       }
       setUploading(true);
       try {
         const ext = file.name.split('.').pop() || 'jpg';
         const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-        const { data, error } = await supabase.storage.from('images').upload(path, file, {
+        const { data, error } = await supabase.storage.from('uploads').upload(path, file, {
           cacheControl: '3600',
           upsert: false,
         });
         if (error) throw error;
-        const { data: urlData } = supabase.storage.from('images').getPublicUrl(data.path);
+        const { data: urlData } = supabase.storage.from('uploads').getPublicUrl(data.path);
         editor.chain().focus().setImage({ src: urlData.publicUrl }).run();
-        setShowImageModal(false);
       } catch (err) {
         console.error(err);
-        alert('Gagal mengunggah. Pastikan bucket "images" ada dan policy diaktifkan.');
+        alert('Gagal mengunggah. Pastikan bucket "uploads" ada dan policy diaktifkan.');
       } finally {
         setUploading(false);
         e.target.value = '';
@@ -136,20 +140,6 @@ export function RichTextEditor({
     },
     [editor]
   );
-
-  const handleConfirmImageUrl = useCallback(() => {
-    const url = imageUrl.trim();
-    if (url && editor) {
-      editor.chain().focus().setImage({ src: url }).run();
-      setImageUrl('');
-      setShowImageModal(false);
-    }
-  }, [editor, imageUrl]);
-
-  const handleCancelImage = useCallback(() => {
-    setImageUrl('');
-    setShowImageModal(false);
-  }, []);
 
   if (!editor) return null;
 
@@ -164,67 +154,26 @@ export function RichTextEditor({
         <ToolbarButton onClick={setBold} isActive={editor.isActive('bold')} icon={Bold} title="Tebal" />
         <ToolbarButton onClick={setBulletList} isActive={editor.isActive('bulletList')} icon={List} title="Daftar bullet" />
         <ToolbarButton onClick={setOrderedList} isActive={editor.isActive('orderedList')} icon={ListOrdered} title="Daftar nomor" />
-        <ToolbarButton onClick={handleInsertImage} icon={ImageIcon} title="Insert Image" />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleUploadImage}
+          className="hidden"
+          aria-hidden
+        />
+        <ToolbarButton
+          onClick={handleInsertImage}
+          disabled={uploading}
+          icon={uploading ? Loader2 : ImageIcon}
+          title={uploading ? 'Mengunggah...' : 'Unggah gambar'}
+          iconClassName={uploading ? 'animate-spin' : undefined}
+        />
       </div>
       <div className={cn(minHeight)}>
         <EditorContent editor={editor} />
       </div>
 
-      {showImageModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-900">Insert Image</h3>
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Unggah dari komputer</label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleUploadImage}
-                  disabled={uploading}
-                  className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-emerald-50 file:text-emerald-700 file:font-medium hover:file:bg-emerald-100"
-                />
-                {uploading && <p className="mt-1 text-xs text-slate-500">Mengunggah...</p>}
-              </div>
-              <div className="relative">
-                <span className="block text-sm text-slate-400 text-center">atau</span>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tempel URL gambar</label>
-                <input
-                  type="url"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleConfirmImageUrl();
-                    if (e.key === 'Escape') handleCancelImage();
-                  }}
-                />
-              </div>
-            </div>
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={handleConfirmImageUrl}
-                disabled={!imageUrl.trim()}
-                className="flex-1 rounded-lg bg-emerald-600 px-4 py-2.5 font-medium text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Sisipkan URL
-              </button>
-              <button
-                type="button"
-                onClick={handleCancelImage}
-                className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Batal
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
