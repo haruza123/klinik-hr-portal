@@ -7,8 +7,9 @@ import { cn } from '@/lib/utils';
 const NAV_LINKS = [
   { href: '/', label: 'Beranda' },
   { href: '/tentang-kami', label: 'Tentang Kami' },
-  { href: '/admin', label: 'Admin' },
 ];
+
+
 
 export function Header() {
   const [drawerOpen, setDrawerOpen] = useState(false);
