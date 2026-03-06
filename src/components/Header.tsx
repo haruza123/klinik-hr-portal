@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 
 const NAV_LINKS = [
   { href: '/', label: 'Beranda' },
-  { href: '/kalkulator', label: 'Kalkulator Pesangon' },
+  { href: '/tentang-kami', label: 'Tentang Kami' },
   { href: '/admin', label: 'Admin' },
 ];
 

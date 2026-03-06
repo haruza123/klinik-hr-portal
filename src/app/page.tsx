@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { Search, Wallet, FileText, Users, ChevronRight, Loader2, Star } from 'lucide-react';
+import { Search, Wallet, FileText, Users, ChevronRight, Loader2, Star, Flame } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { FormAjukanPertanyaan } from '@/components/FormAjukanPertanyaan';
 
@@ -49,6 +49,7 @@ function getCategoryIcon(name: string) {
 export default function Home() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [hotQuestions, setHotQuestions] = useState<Question[]>([]);
   const [search, setSearch] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchResults, setSearchResults] = useState<Question[]>([]);
@@ -79,10 +80,47 @@ export default function Home() {
               : null,
         }));
         setQuestions(normalizedQuestions);
+        // Fallback awal untuk Hot Topics: ambil 3 terbaru/acak dari hasil ini
+        setHotQuestions(selectFallbackHotQuestions(normalizedQuestions));
       }
       setLoading(false);
     }
     fetchData();
+  }, []);
+
+  // Coba ambil 3 solusi terpopuler berdasarkan kolom views (jika ada di database).
+  useEffect(() => {
+    async function fetchHotByViews() {
+      try {
+        const { data, error } = await supabase
+          .from('questions')
+          .select('id, slug, question_text, answer, categories ( name ), views')
+          .order('views', { ascending: false })
+          .limit(3);
+
+        // Jika kolom views tidak ada (error kode 42703) atau ada error lain, gunakan fallback yang sudah diset.
+        if (error || !data || data.length === 0) {
+          return;
+        }
+
+        const normalized: Question[] = data.map((q: any) => ({
+          id: q.id,
+          slug: q.slug,
+          question_text: q.question_text,
+          answer: q.answer,
+          categories:
+            q.categories && Array.isArray(q.categories) && q.categories.length > 0
+              ? { name: q.categories[0].name }
+              : null,
+        }));
+
+        setHotQuestions(normalized.slice(0, 3));
+      } catch {
+        // Abaikan error tak terduga dan tetap gunakan fallback
+      }
+    }
+
+    fetchHotByViews();
   }, []);
 
   const searchTerm = search.trim().toLowerCase();
@@ -146,51 +184,13 @@ export default function Home() {
 
   const featuredQuestions = questions.slice(0, 4);
 
-  // Pilih 3 pertanyaan terbaru dengan kategori berbeda
-  const primaryFeaturedQuestions: Question[] = (() => {
-    const seen = new Set<string>();
-    const result: Question[] = [];
-    for (const q of questions) {
-      const catName = q.categories?.name ?? 'Lainnya';
-      if (seen.has(catName)) continue;
-      seen.add(catName);
-      result.push(q);
-      if (result.length >= 3) break;
-    }
-    if (result.length < 3) {
-      return questions.slice(0, 3);
-    }
-    return result;
-  })();
-
-  // Kelompokkan solusi per kategori untuk seksi (3-4 artikel terbaru per kategori)
-  const byCategory = (() => {
-    const map: Record<string, Question[]> = {};
-    for (const q of questions) {
-      const name = q.categories?.name ?? 'Lainnya';
-      if (!map[name]) map[name] = [];
-      map[name].push(q);
-    }
-    return map;
-  })();
-  const categorySections = categories
-    .filter((cat) => (byCategory[cat.name]?.length ?? 0) > 0)
-    .map((cat) => ({
-      category: cat,
-      questions: (byCategory[cat.name] ?? []).slice(0, 4),
-    }));
-  // Jika ada pertanyaan dengan kategori yang tidak ada di daftar categories, tampilkan juga
-  const otherCategoryNames = Object.keys(byCategory).filter(
-    (name) => !categories.some((c) => c.name === name)
-  );
-  otherCategoryNames.forEach((name) => {
-    if (!categorySections.some((s) => s.category.name === name)) {
-      categorySections.push({
-        category: { id: name, name, description: null },
-        questions: (byCategory[name] ?? []).slice(0, 4),
-      });
-    }
-  });
+  function selectFallbackHotQuestions(allQuestions: Question[]): Question[] {
+    if (allQuestions.length <= 3) return allQuestions;
+    // Ambil 8 terbaru lalu acak 3 di antaranya supaya tetap relevan dan bervariasi
+    const latest = allQuestions.slice(0, 8);
+    const shuffled = [...latest].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 3);
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -280,28 +280,34 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Solusi Utama - Featured Section */}
-        {!loading && primaryFeaturedQuestions.length > 0 && (
+        {/* Hot / Trending Topics - Featured Section */}
+        {!loading && hotQuestions.length > 0 && (
           <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
             <h2 className="flex items-center gap-2 text-2xl font-semibold text-slate-900">
-              <Star className="h-6 w-6 text-emerald-600" />
-              Solusi Utama
+              <Flame className="h-6 w-6 text-emerald-600" />
+              Hot / Trending Topics
             </h2>
             <p className="mt-1 text-slate-600">
-              Tiga solusi pilihan dengan kategori berbeda untuk memulai.
+              Tiga solusi yang paling sering diakses atau terbaru dari pengguna Klinik HR.
             </p>
             <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {primaryFeaturedQuestions.map((q) => (
+              {hotQuestions.slice(0, 3).map((q) => (
                 <Link
                   key={q.id}
                   href={`/solusi/${q.slug ?? q.id}`}
                   className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-md transition-transform transition-shadow duration-200 hover:border-emerald-200 hover:shadow-lg hover:-translate-y-1"
                 >
-                  {q.categories?.name && (
-                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                      {q.categories.name}
+                  <div className="flex items-center justify-between gap-2">
+                    {q.categories?.name && (
+                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                        {q.categories.name}
+                      </span>
+                    )}
+                    <span className="inline-flex items-center rounded-full bg-emerald-600/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                      <Flame className="mr-1 h-3 w-3" />
+                      HOT
                     </span>
-                  )}
+                  </div>
                   <h3 className="mt-3 text-lg sm:text-xl font-semibold text-slate-900 line-clamp-2 group-hover:text-emerald-700">
                     {q.question_text}
                   </h3>
@@ -472,71 +478,6 @@ export default function Home() {
             </Link>
           </section>
         )}
-
-        {/* Daftar Solusi per kategori (seksi) - mobile 1 kolom ramping */}
-        <section className="mx-auto max-w-6xl px-4 py-8 sm:py-12 sm:px-6">
-          {loading ? (
-            <div className="flex justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-            </div>
-          ) : categorySections.length === 0 && featuredQuestions.length === 0 ? (
-            <p className="text-center text-slate-500">Belum ada pertanyaan.</p>
-          ) : (
-            <div className="space-y-8 md:space-y-14">
-              {categorySections.map(({ category, questions: sectionQuestions }) => {
-                const Icon = getCategoryIcon(category.name);
-                return (
-                  <div key={category.id}>
-                    <div className="flex flex-wrap items-center justify-between gap-3 md:gap-4">
-                      <div className="flex items-center gap-2 md:gap-3">
-                        <div className="rounded-lg md:rounded-xl bg-emerald-100 p-2 md:p-2.5 text-emerald-700">
-                          <Icon className="h-4 w-4 md:h-5 md:w-5" />
-                        </div>
-                        <div>
-                          <h2 className="text-lg md:text-xl font-semibold text-slate-900">
-                            Seksi {category.name}
-                          </h2>
-                          <p className="mt-0.5 text-xs md:text-sm text-slate-600 hidden sm:block">
-                            {category.description || `Artikel terbaru seputar ${category.name}`}
-                          </p>
-                        </div>
-                      </div>
-                      <Link
-                        href={`/?kategori=${encodeURIComponent(category.name)}`}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-600 bg-white px-3 py-2 md:px-4 md:py-2.5 text-xs md:text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-50"
-                      >
-                        Lihat Semua
-                        <ChevronRight className="h-3.5 w-3.5 md:h-4 md:w-4" />
-                      </Link>
-                    </div>
-                    <div className="mt-3 md:mt-6 grid grid-cols-1 gap-2 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                      {sectionQuestions.map((q) => (
-                        <Link
-                          key={q.id}
-                          href={`/solusi/${q.slug ?? q.id}`}
-                          className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition-all hover:border-emerald-200 hover:shadow-md sm:p-5"
-                        >
-                          <p className="font-semibold text-slate-900 group-hover:text-emerald-700 line-clamp-2 text-sm sm:text-base">
-                            {q.question_text}
-                          </p>
-                          {q.categories?.name && (
-                            <span className="mt-1.5 sm:mt-2 inline-block text-xs sm:text-sm text-emerald-600">
-                              {q.categories.name}
-                            </span>
-                          )}
-                          <span className="mt-auto pt-2 sm:pt-3 inline-flex items-center text-xs sm:text-sm text-slate-500 group-hover:text-emerald-600">
-                            Baca selengkapnya
-                            <ChevronRight className="ml-1 h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                          </span>
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
 
         {/* Form Ajukan Pertanyaan */}
         <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6 border-t border-slate-100">
