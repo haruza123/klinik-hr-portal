@@ -16,6 +16,9 @@ import {
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 
+const STORAGE_BUCKET =
+  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ?? 'Images';
+
 interface RichTextEditorProps {
   content: string;
   onChange: (html: string) => void;
@@ -123,16 +126,18 @@ export function RichTextEditor({
       try {
         const ext = file.name.split('.').pop() || 'jpg';
         const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-        const { data, error } = await supabase.storage.from('uploads').upload(path, file, {
+        const { data, error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, {
           cacheControl: '3600',
           upsert: false,
         });
         if (error) throw error;
-        const { data: urlData } = supabase.storage.from('uploads').getPublicUrl(data.path);
+        const { data: urlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(data.path);
         editor.chain().focus().setImage({ src: urlData.publicUrl }).run();
       } catch (err) {
         console.error(err);
-        alert('Gagal mengunggah. Pastikan bucket "uploads" ada dan policy diaktifkan.');
+        alert(
+          `Gagal mengunggah. Pastikan bucket "${STORAGE_BUCKET}" ada dan policy storage diaktifkan.`
+        );
       } finally {
         setUploading(false);
         e.target.value = '';

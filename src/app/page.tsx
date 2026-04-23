@@ -6,11 +6,13 @@ import { supabase } from '@/lib/supabase';
 import { Search, Wallet, FileText, Users, ChevronRight, Loader2, Star, Flame } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { FormAjukanPertanyaan } from '@/components/FormAjukanPertanyaan';
+import { generateSlug } from '@/lib/slug';
 
 interface Category {
   id: string;
   name: string;
   description: string | null;
+  slug: string;
 }
 
 interface Question {
@@ -60,7 +62,7 @@ export default function Home() {
   useEffect(() => {
     async function fetchData() {
       const [catRes, qRes] = await Promise.all([
-        supabase.from('categories').select('id, name, description').order('name'),
+        supabase.from('categories').select('id, name, description, slug').order('name'),
         supabase
           .from('questions')
           .select('id, slug, question_text, answer, categories ( name )')
@@ -343,7 +345,7 @@ export default function Home() {
                       return (
                         <Link
                           key={cat.id}
-                          href={`/?kategori=${encodeURIComponent(cat.name)}`}
+                          href={`/solusi?kategori=${cat.slug}`}
                           className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-emerald-200 hover:shadow-md flex-shrink-0 w-[120px] snap-start"
                         >
                           <div className="rounded-lg bg-emerald-100 p-2.5 text-emerald-700">
@@ -365,7 +367,7 @@ export default function Home() {
                     return (
                       <Link
                         key={cat.id}
-                        href={`/?kategori=${encodeURIComponent(cat.name)}`}
+                        href={`/solusi?kategori=${cat.slug}`}
                         className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:border-emerald-200 hover:shadow-md"
                       >
                         <div className="rounded-xl bg-emerald-100 p-3 text-emerald-700">
@@ -396,7 +398,7 @@ export default function Home() {
                       return (
                         <Link
                           key={cat.name}
-                          href={`/?kategori=${encodeURIComponent(cat.name)}`}
+                          href={`/solusi?kategori=${generateSlug(cat.name)}`}
                           className="flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex-shrink-0 w-[120px]"
                         >
                           <div className="rounded-lg bg-emerald-100 p-2.5 text-emerald-700">

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { RichTextEditor } from '@/components/RichTextEditorClient';
@@ -31,14 +30,11 @@ interface Question {
 }
 
 export default function AdminPage() {
-  const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [checkingAuth, setCheckingAuth] = useState(true);
-
   const [title, setTitle] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [answer, setAnswer] = useState('');
@@ -50,22 +46,8 @@ export default function AdminPage() {
   const [savingCategory, setSavingCategory] = useState(false);
 
   useEffect(() => {
-    const init = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session) {
-        router.replace('/login');
-        return;
-      }
-
-      await Promise.all([fetchCategories(), fetchQuestions()]);
-      setCheckingAuth(false);
-    };
-
-    void init();
-  }, [router]);
+    void Promise.all([fetchCategories(), fetchQuestions()]);
+  }, []);
 
   async function fetchCategories() {
     const { data, error } = await supabase
@@ -200,12 +182,6 @@ export default function AdminPage() {
     <div className="min-h-screen bg-white">
       <Header />
       <div className="max-w-4xl mx-auto px-4 py-10">
-        {checkingAuth ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
-          </div>
-        ) : (
-          <>
         <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">Admin</h1>
@@ -481,9 +457,7 @@ export default function AdminPage() {
         </section>
         </>
         )}
-          </>
-        )}
-      </div>
+        </div>
     </div>
   );
 }

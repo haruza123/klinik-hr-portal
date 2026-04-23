@@ -37,7 +37,7 @@ export function Header() {
             className="min-w-0 shrink-0 text-lg font-semibold tracking-tight text-slate-900 truncate"
             onClick={closeDrawer}
           >
-            Klinik HR
+            
           </Link>
 
           {/* Desktop nav - tampil dari md (768px) */}

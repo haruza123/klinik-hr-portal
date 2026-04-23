@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { Loader2, ChevronRight, Inbox } from 'lucide-react';
@@ -15,30 +14,20 @@ interface Inquiry {
 }
 
 export default function AdminInquiriesPage() {
-  const router = useRouter();
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
     const init = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
-        router.replace('/login');
-        return;
-      }
       const { data, error } = await supabase
         .from('inquiries')
         .select('id, question, email, created_at')
         .order('created_at', { ascending: false });
       if (!error) setInquiries(data ?? []);
       setLoading(false);
-      setCheckingAuth(false);
     };
     void init();
-  }, [router]);
+  }, []);
 
   function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString('id-ID', {
@@ -48,17 +37,6 @@ export default function AdminInquiriesPage() {
       hour: '2-digit',
       minute: '2-digit',
     });
-  }
-
-  if (checkingAuth) {
-    return (
-      <div className="min-h-screen bg-white">
-        <Header />
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-        </div>
-      </div>
-    );
   }
 
   return (

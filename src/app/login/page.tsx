@@ -1,11 +1,14 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { FormEvent, Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirectTo') ?? '/admin';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -28,8 +31,7 @@ export default function LoginPage() {
       return;
     }
 
-    // Jika login berhasil, arahkan ke halaman admin
-    router.push('/admin');
+    router.push(redirectTo.startsWith('/') ? redirectTo : '/admin');
   };
 
   return (
@@ -97,5 +99,23 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm border border-slate-200 text-center text-sm text-slate-500">
+        Memuat…
+      </div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginForm />
+    </Suspense>
   );
 }

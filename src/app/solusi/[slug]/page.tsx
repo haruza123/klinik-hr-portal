@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { createSupabaseServerClient } from '@/lib/supabase-server';
 import { ChevronRight, MessageCircle, Calculator } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
+import { Mail } from 'lucide-react';
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -17,6 +18,7 @@ function stripHtml(html: string, maxLength = 160): string {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const supabase = createSupabaseServerClient();
   const { slug } = await params;
   const isUuid = UUID_REGEX.test(slug);
   const query = supabase
@@ -43,6 +45,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function SolusiPage({ params }: Props) {
+  const supabase = createSupabaseServerClient();
   const { slug } = await params;
   const isUuid = UUID_REGEX.test(slug);
 
@@ -60,19 +63,33 @@ export default async function SolusiPage({ params }: Props) {
   const category = question.categories as { id?: string; name?: string } | null;
   const categoryName = category?.name ?? 'Kategori';
 
-  const { data: relatedQuestions = [] } = await supabase
+let { data: relatedQuestions = [] } = await supabase
+  .from('questions')
+  .select('id, slug, question_text, categories ( name )')
+  .eq('category_id', question.category_id)
+  .neq('id', question.id)
+  .order('created_at', { ascending: false })
+  .limit(5);
+
+// 👉 kalau related kurang dari 3, ambil latest
+if (!relatedQuestions || relatedQuestions.length < 3) {
+  const { data: latestQuestions } = await supabase
     .from('questions')
     .select('id, slug, question_text, categories ( name )')
-    .eq('category_id', question.category_id)
     .neq('id', question.id)
     .order('created_at', { ascending: false })
     .limit(5);
 
+  relatedQuestions = latestQuestions ?? [];
+}
+
   const relatedQuestionsSafe = relatedQuestions ?? [];
 
-  const whatsappUrl = `https://wa.me/628XXXXXXXXXX?text=${encodeURIComponent(
-    `Halo Pak Dadi, saya ingin bertanya mengenai: ${question.question_text}`
-  )}`;
+const emailUrl = `mailto:admin@konsultasihr.com?subject=${encodeURIComponent(
+  'Konsultasi HR'
+)}&body=${encodeURIComponent(
+  `Halo Pak Dadi,\n\nSaya ingin bertanya mengenai: ${question.question_text}`
+)}`;
 
   const faqSchema = {
     '@context': 'https://schema.org',
@@ -153,13 +170,13 @@ export default async function SolusiPage({ params }: Props) {
                     Berpengalaman membantu perusahaan dan karyawan dalam berbagai aspek ketenagakerjaan, mulai dari rekrutmen, kontrak kerja, hingga penggajian.
                   </p>
                   <a
-                    href={whatsappUrl}
+                    href={emailUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="mt-6 inline-flex items-center gap-2 w-full sm:w-auto justify-center rounded-xl bg-emerald-600 px-6 py-4 font-semibold text-white shadow-lg hover:bg-emerald-700 transition-colors"
                   >
-                    <MessageCircle className="h-5 w-5" />
-                    Konsultasi Privat via WhatsApp
+                    <Mail className="h-5 w-5" />
+                    Konsultasi via Email
                   </a>
                 </div>
               </div>
@@ -170,7 +187,7 @@ export default async function SolusiPage({ params }: Props) {
           <aside className="lg:col-span-1 space-y-6">
             <div className="sticky top-24 space-y-6">
               {/* Kalkulator HR */}
-              <Link
+              {/* <Link
                 href="/kalkulator"
                 className="flex items-center gap-3 rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4 transition-colors hover:border-emerald-300 hover:from-emerald-100"
               >
@@ -187,11 +204,13 @@ export default async function SolusiPage({ params }: Props) {
                   </p>
                 </div>
                 <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
-              </Link>
+              </Link> */}
 
               {/* Pertanyaan Terkait */}
               <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-semibold text-slate-900 mb-4">Pertanyaan Terkait</h2>
+                <h2 className="text-lg font-semibold text-slate-900 mb-4">
+  {relatedQuestions.length > 0 ? 'Pertanyaan Terkait' : 'Solusi Terbaru'}
+</h2>
                 {relatedQuestionsSafe.length > 0 ? (
                   <ul className="space-y-3">
                     {relatedQuestionsSafe.map((q) => {
@@ -225,13 +244,13 @@ export default async function SolusiPage({ params }: Props) {
                   </div>
                 </div>
                 <a
-                  href={whatsappUrl}
+                  href={emailUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mt-3 flex items-center justify-center gap-1.5 w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
                 >
-                  <MessageCircle className="h-4 w-4" />
-                  Konsultasi via WA
+                  <Mail className="h-4 w-4" />
+                  Konsultasi via Email
                 </a>
               </div>
             </div>
