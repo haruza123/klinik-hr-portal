@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS inquiries (
   id TEXT PRIMARY KEY,
   question TEXT NOT NULL,
   email TEXT,
+  status TEXT NOT NULL DEFAULT 'baru',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

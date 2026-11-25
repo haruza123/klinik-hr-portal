@@ -7,7 +7,7 @@ interface Env {
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
@@ -381,9 +381,32 @@ export default {
         if (auth instanceof Response) return auth;
 
         const { results } = await env.DB.prepare(
-          'SELECT id, question, email, created_at FROM inquiries ORDER BY created_at DESC'
+          'SELECT id, question, email, status, created_at FROM inquiries ORDER BY created_at DESC'
         ).all();
         return json({ data: results });
+      }
+
+      // Inquiries: Update status (Admin)
+      if (path.startsWith('/api/inquiries/') && request.method === 'PATCH') {
+        const auth = await requireAdmin(request, env);
+        if (auth instanceof Response) return auth;
+
+        const id = decodeURIComponent(path.slice('/api/inquiries/'.length));
+        const body = (await request.json()) as { status?: string };
+        const status = body.status === 'selesai' ? 'selesai' : 'baru';
+
+        await env.DB.prepare('UPDATE inquiries SET status = ? WHERE id = ?').bind(status, id).run();
+        return json({ ok: true, status });
+      }
+
+      // Inquiries: Delete (Admin)
+      if (path.startsWith('/api/inquiries/') && request.method === 'DELETE') {
+        const auth = await requireAdmin(request, env);
+        if (auth instanceof Response) return auth;
+
+        const id = decodeURIComponent(path.slice('/api/inquiries/'.length));
+        await env.DB.prepare('DELETE FROM inquiries WHERE id = ?').bind(id).run();
+        return json({ ok: true });
       }
 
       // Media: Upload Image (Admin)
