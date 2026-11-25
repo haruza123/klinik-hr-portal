@@ -1,16 +1,25 @@
 import Link from 'next/link';
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { apiFetch } from '@/lib/api';
 import { ChevronRight, MessageCircle, Calculator } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { Mail } from 'lucide-react';
 
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: Promise<{ slug: string }>;
 }
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+interface QuestionDetail {
+  id: string;
+  slug: string | null;
+  category_id: string;
+  question_text: string;
+  answer: string | null;
+  categories: { id?: string; name?: string } | null;
+}
 
 function stripHtml(html: string, maxLength = 160): string {
   const text = html.replace(/<[^>]*>/g, '').trim().replace(/\s+/g, ' ');
@@ -18,72 +27,67 @@ function stripHtml(html: string, maxLength = 160): string {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const supabase = createSupabaseServerClient();
   const { slug } = await params;
-  const isUuid = UUID_REGEX.test(slug);
-  const query = supabase
-    .from('questions')
-    .select('question_text, answer, categories ( name )')
-    .order('created_at', { ascending: false });
-  const { data: question, error } = isUuid
-    ? await query.eq('id', slug).single()
-    : await query.eq('slug', slug).single();
-  if (error || !question) {
+  try {
+    const res = await apiFetch<{ data: QuestionDetail }>(
+      `/api/questions/${encodeURIComponent(slug)}`,
+      { cache: 'no-store' }
+    );
+    const question = res.data;
+    if (!question) return { title: 'Solusi tidak ditemukan' };
+    return {
+      title: question.question_text,
+      description: stripHtml(question.answer || ''),
+      openGraph: {
+        title: question.question_text,
+        description: stripHtml(question.answer || '', 120),
+        type: 'article',
+      },
+    };
+  } catch {
     return { title: 'Solusi tidak ditemukan' };
   }
-  const category = question.categories as { name?: string } | null;
-  const categoryName = category?.name ?? 'Solusi';
-  return {
-    title: question.question_text,
-    description: stripHtml(question.answer || ''),
-    openGraph: {
-      title: question.question_text,
-      description: stripHtml(question.answer || '', 120),
-      type: 'article',
-    },
-  };
 }
 
 export default async function SolusiPage({ params }: Props) {
-  const supabase = createSupabaseServerClient();
   const { slug } = await params;
-  const isUuid = UUID_REGEX.test(slug);
 
-  const query = supabase
-    .from('questions')
-    .select('id, slug, category_id, question_text, answer, categories ( id, name )')
-    .order('created_at', { ascending: false });
+  let question: QuestionDetail | null = null;
+  try {
+    const res = await apiFetch<{ data: QuestionDetail }>(
+      `/api/questions/${encodeURIComponent(slug)}`,
+      { cache: 'no-store' }
+    );
+    question = res.data ?? null;
+  } catch {
+    question = null;
+  }
 
-  const { data: question, error } = isUuid
-    ? await query.eq('id', slug).single()
-    : await query.eq('slug', slug).single();
+  if (!question) notFound();
 
-  if (error || !question) notFound();
-
-  const category = question.categories as { id?: string; name?: string } | null;
+  const category = question.categories;
   const categoryName = category?.name ?? 'Kategori';
 
-let { data: relatedQuestions = [] } = await supabase
-  .from('questions')
-  .select('id, slug, question_text, categories ( name )')
-  .eq('category_id', question.category_id)
-  .neq('id', question.id)
-  .order('created_at', { ascending: false })
-  .limit(5);
+  let relatedQuestions: QuestionDetail[] = [];
+  try {
+    const relRes = await apiFetch<{ data: QuestionDetail[] }>(
+      `/api/questions?categoryId=${encodeURIComponent(question.category_id)}&excludeId=${encodeURIComponent(question.id)}&limit=5`,
+      { cache: 'no-store' }
+    );
+    relatedQuestions = relRes.data ?? [];
 
-// 👉 kalau related kurang dari 3, ambil latest
-if (!relatedQuestions || relatedQuestions.length < 3) {
-  const { data: latestQuestions } = await supabase
-    .from('questions')
-    .select('id, slug, question_text, categories ( name )')
-    .neq('id', question.id)
-    .order('created_at', { ascending: false })
-    .limit(5);
+    if (relatedQuestions.length < 3) {
+      const latestRes = await apiFetch<{ data: QuestionDetail[] }>(
+        `/api/questions?excludeId=${encodeURIComponent(question.id)}&limit=5`,
+        { cache: 'no-store' }
+      );
+      relatedQuestions = latestRes.data ?? [];
+    }
+  } catch {
+    relatedQuestions = [];
+  }
 
-  relatedQuestions = latestQuestions ?? [];
-}
-
-  const relatedQuestionsSafe = relatedQuestions ?? [];
+  const relatedQuestionsSafe = relatedQuestions;
 
 const emailUrl = `mailto:admin@konsultasihr.com?subject=${encodeURIComponent(
   'Konsultasi HR'

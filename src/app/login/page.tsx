@@ -2,7 +2,7 @@
 
 import { FormEvent, Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { apiFetch, setAdminTokenCookie } from '@/lib/api';
 
 function LoginForm() {
   const router = useRouter();
@@ -19,19 +19,18 @@ function LoginForm() {
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      setError(error.message);
-      return;
+    try {
+      const data = await apiFetch<{ token: string }>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+      setAdminTokenCookie(data.token);
+      router.push(redirectTo.startsWith('/') ? redirectTo : '/admin');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal masuk.');
+    } finally {
+      setLoading(false);
     }
-
-    router.push(redirectTo.startsWith('/') ? redirectTo : '/admin');
   };
 
   return (
@@ -41,7 +40,7 @@ function LoginForm() {
           Login Admin
         </h1>
         <p className="mt-2 text-sm text-slate-600 text-center">
-          Masuk dengan akun yang sudah Anda daftarkan di Supabase.
+          Masuk dengan akun admin Klinik HR.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-4">

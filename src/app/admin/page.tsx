@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { apiFetch, getAdminTokenFromCookie } from '@/lib/api';
 import { RichTextEditor } from '@/components/RichTextEditorClient';
 import { Loader2, Pencil, Trash2, Plus, Inbox } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -50,36 +50,23 @@ export default function AdminPage() {
   }, []);
 
   async function fetchCategories() {
-    const { data, error } = await supabase
-      .from('categories')
-      .select('id, name, slug, description')
-      .order('name');
-    if (!error) setCategories(data ?? []);
+    try {
+      const res = await apiFetch<{ data: Category[] }>('/api/categories');
+      setCategories(res.data ?? []);
+    } catch (err) {
+      console.error(err);
+    }
   }
 
-  // async function fetchQuestions() {
-  //   const { data, error } = await supabase
-  //     .from('questions')
-  //     .select('id, slug, category_id, question_text, answer, question_order, is_required, created_at, categories ( name )')
-  //     .order('created_at', { ascending: false });
-  //   if (!error) setQuestions(data ?? []);
-  //   setLoading(false);
-  // }
   async function fetchQuestions() {
-    const { data, error } = await supabase
-      .from('questions')
-      .select('id, slug, category_id, question_text, answer, question_order, is_required, created_at, categories ( name )')
-      .order('created_at', { ascending: false });
-
-    if (!error && data) {
-      // Normalisasi: Ambil objek pertama jika categories berupa array
-      const normalizedData = data.map((q: any) => ({
-        ...q,
-        categories: Array.isArray(q.categories) ? q.categories[0] : q.categories
-      }));
-      setQuestions(normalizedData);
+    try {
+      const res = await apiFetch<{ data: Question[] }>('/api/questions?limit=100');
+      setQuestions(res.data ?? []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   function resetForm() {
@@ -104,32 +91,35 @@ export default function AdminPage() {
     const slug = generateSlug(title);
 
     try {
+      const token = getAdminTokenFromCookie();
       if (editingId) {
-        const { error } = await supabase
-          .from('questions')
-          .update({
+        await apiFetch(`/api/questions/${editingId}`, {
+          method: 'PUT',
+          token,
+          body: JSON.stringify({
             question_text: title.trim(),
             category_id: categoryId,
             answer: answer || null,
             slug,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', editingId);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('questions').insert({
-          question_text: title.trim(),
-          category_id: categoryId,
-          answer: answer || null,
-          slug,
+          }),
         });
-        if (error) throw error;
+      } else {
+        await apiFetch('/api/questions', {
+          method: 'POST',
+          token,
+          body: JSON.stringify({
+            question_text: title.trim(),
+            category_id: categoryId,
+            answer: answer || null,
+            slug,
+          }),
+        });
       }
       resetForm();
       await fetchQuestions();
     } catch (err) {
       console.error(err);
-      alert('Gagal menyimpan. Pastikan kolom slug ada di tabel. Lihat supabase-migrations.sql');
+      alert('Gagal menyimpan pertanyaan. Pastikan Anda sudah login sebagai admin.');
     } finally {
       setSaving(false);
     }
@@ -137,14 +127,15 @@ export default function AdminPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Yakin ingin menghapus pertanyaan ini?')) return;
-    const { error } = await supabase.from('questions').delete().eq('id', id);
-    if (error) {
-      console.error(error);
+    try {
+      const token = getAdminTokenFromCookie();
+      await apiFetch(`/api/questions/${id}`, { method: 'DELETE', token });
+      if (editingId === id) resetForm();
+      await fetchQuestions();
+    } catch (err) {
+      console.error(err);
       alert('Gagal menghapus.');
-      return;
     }
-    if (editingId === id) resetForm();
-    await fetchQuestions();
   }
 
   function handleCategoryNameChange(value: string) {
@@ -160,19 +151,23 @@ export default function AdminPage() {
     const slug = categorySlug.trim() || generateSlug(categoryName);
 
     try {
-      const { error } = await supabase.from('categories').insert({
-        name: categoryName.trim(),
-        slug: slug || null,
-        description: categoryDescription.trim() || null,
+      const token = getAdminTokenFromCookie();
+      await apiFetch('/api/categories', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({
+          name: categoryName.trim(),
+          slug: slug || null,
+          description: categoryDescription.trim() || null,
+        }),
       });
-      if (error) throw error;
       setCategoryName('');
       setCategoryDescription('');
       setCategorySlug('');
       await fetchCategories();
     } catch (err) {
       console.error(err);
-      alert('Gagal menyimpan kategori. Pastikan kolom slug ada di tabel (lihat supabase-schema.sql).');
+      alert('Gagal menyimpan kategori.');
     } finally {
       setSavingCategory(false);
     }

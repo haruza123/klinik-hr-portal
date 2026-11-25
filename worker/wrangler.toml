@@ -1,0 +1,8 @@
+name = "klinik-hr-api"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "klinik-hr-db"
+database_id = "f9f7ab52-11e4-49c6-bcc4-41de68734483"

@@ -6,6 +6,10 @@ import { cn } from '@/lib/utils';
 
 const NAV_LINKS = [
   { href: '/', label: 'Beranda' },
+  { href: '/solusi', label: 'Semua Solusi' },
+  { href: '/kalkulator', label: 'Kalkulator' },
+  { href: '/cek-dokumen', label: 'Cek Dokumen' },
+  { href: '/konsultasi-pro', label: 'Konsultasi Pro' },
   { href: '/tentang-kami', label: 'Tentang Kami' },
 ];
 
@@ -34,10 +38,13 @@ export function Header() {
           {/* Logo - proporsional, tidak tertindih */}
           <Link
             href="/"
-            className="min-w-0 shrink-0 text-lg font-semibold tracking-tight text-slate-900 truncate"
+            className="min-w-0 shrink-0 inline-flex items-center gap-2 text-lg font-bold tracking-tight text-slate-900 truncate"
             onClick={closeDrawer}
           >
-            
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-xs font-bold text-white">
+              HR
+            </span>
+            <span>Klinik HR</span>
           </Link>
 
           {/* Desktop nav - tampil dari md (768px) */}

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Loader2, Send } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { apiFetch } from '@/lib/api';
 
 export function FormAjukanPertanyaan() {
   const [question, setQuestion] = useState('');
@@ -19,23 +19,24 @@ export function FormAjukanPertanyaan() {
     setError(null);
     setSubmitting(true);
 
-    const { error: insertError } = await supabase.from('inquiries').insert({
-      question: q,
-      email: email.trim() || null,
-    });
-
-    setSubmitting(false);
-
-    if (insertError) {
+    try {
+      await apiFetch('/api/inquiries', {
+        method: 'POST',
+        body: JSON.stringify({
+          question: q,
+          email: email.trim() || null,
+        }),
+      });
+      setQuestion('');
+      setEmail('');
+      setSent(true);
+      setTimeout(() => setSent(false), 5000);
+    } catch (insertError) {
       console.error(insertError);
       setError('Gagal mengirim pertanyaan. Coba lagi nanti.');
-      return;
+    } finally {
+      setSubmitting(false);
     }
-
-    setQuestion('');
-    setEmail('');
-    setSent(true);
-    setTimeout(() => setSent(false), 5000);
   }
 
   return (

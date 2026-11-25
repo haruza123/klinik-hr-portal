@@ -14,10 +14,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/lib/supabase';
-
-const STORAGE_BUCKET =
-  process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET ?? 'Images';
+import { apiFetch, getAdminTokenFromCookie } from '@/lib/api';
 
 interface RichTextEditorProps {
   content: string;
@@ -124,19 +121,21 @@ export function RichTextEditor({
       }
       setUploading(true);
       try {
-        const ext = file.name.split('.').pop() || 'jpg';
-        const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-        const { data, error } = await supabase.storage.from(STORAGE_BUCKET).upload(path, file, {
-          cacheControl: '3600',
-          upsert: false,
+        const formData = new FormData();
+        formData.append('file', file);
+        const token = getAdminTokenFromCookie();
+        const data = await apiFetch<{ url: string }>('/api/media', {
+          method: 'POST',
+          token,
+          body: formData,
         });
-        if (error) throw error;
-        const { data: urlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(data.path);
-        editor.chain().focus().setImage({ src: urlData.publicUrl }).run();
+        editor.chain().focus().setImage({ src: data.url }).run();
       } catch (err) {
         console.error(err);
         alert(
-          `Gagal mengunggah. Pastikan bucket "${STORAGE_BUCKET}" ada dan policy storage diaktifkan.`
+          err instanceof Error
+            ? err.message
+            : 'Gagal mengunggah gambar (maksimal 1.5 MB).'
         );
       } finally {
         setUploading(false);

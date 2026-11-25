@@ -2,8 +2,21 @@
 
 import { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
-import { Search, Wallet, FileText, Users, ChevronRight, Loader2, Star, Flame } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
+import {
+  Search,
+  Wallet,
+  FileText,
+  Users,
+  ChevronRight,
+  Loader2,
+  Flame,
+  Briefcase,
+  Building2,
+  Calculator,
+  FileCheck2,
+  MessageSquare,
+} from 'lucide-react';
 import { Header } from '@/components/Header';
 import { FormAjukanPertanyaan } from '@/components/FormAjukanPertanyaan';
 import { generateSlug } from '@/lib/slug';
@@ -61,62 +74,32 @@ export default function Home() {
 
   useEffect(() => {
     async function fetchData() {
-      const [catRes, qRes] = await Promise.all([
-        supabase.from('categories').select('id, name, description, slug').order('name'),
-        supabase
-          .from('questions')
-          .select('id, slug, question_text, answer, categories ( name )')
-          .order('created_at', { ascending: false })
-          .limit(30),
-      ]);
-      if (!catRes.error) setCategories(catRes.data ?? []);
-      if (!qRes.error) {
-        const normalizedQuestions: Question[] = (qRes.data ?? []).map((q: any) => ({
-          id: q.id,
-          slug: q.slug,
-          question_text: q.question_text,
-          answer: q.answer,
-          categories:
-            q.categories && Array.isArray(q.categories) && q.categories.length > 0
-              ? { name: q.categories[0].name }
-              : null,
-        }));
+      try {
+        const [catRes, qRes] = await Promise.all([
+          apiFetch<{ data: Category[] }>('/api/categories'),
+          apiFetch<{ data: Question[] }>('/api/questions?limit=30'),
+        ]);
+        setCategories(catRes.data ?? []);
+        const normalizedQuestions = qRes.data ?? [];
         setQuestions(normalizedQuestions);
-        // Fallback awal untuk Hot Topics: ambil 3 terbaru/acak dari hasil ini
         setHotQuestions(selectFallbackHotQuestions(normalizedQuestions));
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     fetchData();
   }, []);
 
-  // Coba ambil 3 solusi terpopuler berdasarkan kolom views (jika ada di database).
+  // Ambil 3 solusi terpopuler berdasarkan kolom views.
   useEffect(() => {
     async function fetchHotByViews() {
       try {
-        const { data, error } = await supabase
-          .from('questions')
-          .select('id, slug, question_text, answer, categories ( name ), views')
-          .order('views', { ascending: false })
-          .limit(3);
-
-        // Jika kolom views tidak ada (error kode 42703) atau ada error lain, gunakan fallback yang sudah diset.
-        if (error || !data || data.length === 0) {
-          return;
+        const res = await apiFetch<{ data: Question[] }>('/api/questions?sort=views&limit=3');
+        if (res.data && res.data.length > 0) {
+          setHotQuestions(res.data.slice(0, 3));
         }
-
-        const normalized: Question[] = data.map((q: any) => ({
-          id: q.id,
-          slug: q.slug,
-          question_text: q.question_text,
-          answer: q.answer,
-          categories:
-            q.categories && Array.isArray(q.categories) && q.categories.length > 0
-              ? { name: q.categories[0].name }
-              : null,
-        }));
-
-        setHotQuestions(normalized.slice(0, 3));
       } catch {
         // Abaikan error tak terduga dan tetap gunakan fallback
       }
@@ -132,7 +115,7 @@ export default function Home() {
       ? searchTerm.length >= 3
       : questions.slice(0, 5).length > 0);
 
-  // Smart Suggestion - debounced Supabase search
+  // Smart Suggestion - debounced search
   useEffect(() => {
     if (searchTerm.length < 3) {
       setSearchResults([]);
@@ -145,32 +128,13 @@ export default function Home() {
 
     const handler = setTimeout(async () => {
       try {
-        const { data, error } = await supabase
-          .from('questions')
-          .select('id, slug, question_text, answer, categories ( name )')
-          .or(
-            `question_text.ilike.%${searchTerm}%,answer.ilike.%${searchTerm}%`
-          )
-          .order('created_at', { ascending: false })
-          .limit(10);
-
+        const res = await apiFetch<{ data: Question[] }>(
+          `/api/questions?search=${encodeURIComponent(searchTerm)}&limit=10`
+        );
         if (!active) return;
-
-        if (error || !data) {
-          setSearchResults([]);
-        } else {
-          const normalized: Question[] = data.map((q: any) => ({
-            id: q.id,
-            slug: q.slug,
-            question_text: q.question_text,
-            answer: q.answer,
-            categories:
-              q.categories && Array.isArray(q.categories) && q.categories.length > 0
-                ? { name: q.categories[0].name }
-                : null,
-          }));
-          setSearchResults(normalized);
-        }
+        setSearchResults(res.data ?? []);
+      } catch {
+        if (active) setSearchResults([]);
       } finally {
         if (active) {
           setSearchLoading(false);
@@ -199,14 +163,17 @@ export default function Home() {
       <Header />
 
       <main>
-        {/* Hero + Smart Search - full width search + safe area on mobile */}
-        <section className="relative border-b border-slate-100 bg-slate-50/50 py-16 sm:py-24 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pl-4 sm:pr-4">
+        {/* Hero + Smart Search */}
+        <section className="relative border-b border-slate-100 bg-gradient-to-b from-emerald-50/50 via-slate-50/40 to-white py-14 sm:py-20 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] sm:pl-4 sm:pr-4">
           <div className="mx-auto max-w-3xl text-center w-full">
-            <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-3xl md:text-4xl">
-              Klinik HR Indonesia
+            <span className="inline-flex items-center rounded-full bg-emerald-100/80 px-3 py-1 text-xs font-semibold text-emerald-800">
+              Portal Konsultasi &amp; Solusi Ketenagakerjaan
+            </span>
+            <h1 className="mt-4 text-2xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+              Solusi Praktis HR untuk Pekerja, HRD &amp; Pengusaha
             </h1>
-            <p className="mt-3 text-lg text-slate-600">
-              Referensi & solusi praktis masalah ketenagakerjaan
+            <p className="mt-3 text-base sm:text-lg text-slate-600">
+              Temukan jawaban cepat seputar kontrak kerja, gaji, lembur, THR, cuti, hingga PHK—tanpa perlu menunggu antrean konsultasi satu per satu.
             </p>
             <div className="mt-10 relative w-full" ref={searchRef}>
               <div className="relative w-full">
@@ -273,12 +240,128 @@ export default function Home() {
             </div>
             <p className="mt-4 flex flex-wrap justify-center gap-2 text-sm text-slate-500">
               <span>Populer:</span>
-              {['Gaji & Payroll', 'Kontrak Kerja', 'PHK', 'BPJS', 'Rekrutmen'].map((t) => (
-                <Link key={t} href={`/?q=${encodeURIComponent(t)}`} className="hover:text-emerald-600">
-                  {t}
+              {[
+                { label: 'Gaji, Lembur & THR', slug: 'gaji-lembur-thr' },
+                { label: 'Kontrak Kerja', slug: 'kontrak-kerja' },
+                { label: 'PHK & Pesangon', slug: 'phk-pesangon' },
+                { label: 'BPJS', slug: 'bpjs-jaminan-sosial' },
+                { label: 'Hak Pekerja', slug: 'hak-pekerja' },
+              ].map((t) => (
+                <Link
+                  key={t.slug}
+                  href={`/solusi?kategori=${t.slug}`}
+                  className="rounded-full bg-white px-2.5 py-0.5 border border-slate-200 text-slate-600 hover:border-emerald-300 hover:text-emerald-700 transition-colors"
+                >
+                  {t.label}
                 </Link>
               ))}
             </p>
+          </div>
+        </section>
+
+        {/* Jalur Cepat Sesuai Peran: Pekerja, HRD, Pengusaha */}
+        <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-6">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">Mulai Sesuai Kebutuhan Anda</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Pilih peran Anda untuk langsung menuju panduan dan alat bantu yang paling relevan.
+              </p>
+            </div>
+            <Link href="/solusi" className="text-sm font-medium text-emerald-600 hover:text-emerald-700 inline-flex items-center">
+              Lihat semua solusi
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Link>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <Link
+              href="/solusi?kategori=hak-pekerja"
+              className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:border-emerald-300 hover:shadow-md"
+            >
+              <div className="inline-flex rounded-xl bg-emerald-100 p-3 text-emerald-700">
+                <Users className="h-6 w-6" />
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-slate-900 group-hover:text-emerald-700">
+                Untuk Pekerja &amp; Karyawan
+              </h3>
+              <p className="mt-1.5 text-sm text-slate-600">
+                Pahami hak PKWT/PKWTT, upah lembur, THR, cuti, BPJS, penahanan ijazah, hingga langkah menghadapi PHK.
+              </p>
+              <span className="mt-4 inline-flex items-center text-sm font-medium text-emerald-600">
+                Cek hak pekerja <ChevronRight className="ml-1 h-4 w-4" />
+              </span>
+            </Link>
+
+            <Link
+              href="/solusi?kategori=kontrak-kerja"
+              className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:border-emerald-300 hover:shadow-md"
+            >
+              <div className="inline-flex rounded-xl bg-sky-100 p-3 text-sky-700">
+                <Briefcase className="h-6 w-6" />
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-slate-900 group-hover:text-emerald-700">
+                Untuk Praktisi HRD
+              </h3>
+              <p className="mt-1.5 text-sm text-slate-600">
+                Referensi cepat aturan PP 35/2021 &amp; PP 36/2021 untuk kontrak, SP, cuti, dan kepatuhan administrasi SDM.
+              </p>
+              <span className="mt-4 inline-flex items-center text-sm font-medium text-emerald-600">
+                Lihat panduan HRD <ChevronRight className="ml-1 h-4 w-4" />
+              </span>
+            </Link>
+
+            <Link
+              href="/konsultasi-pro"
+              className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:border-emerald-300 hover:shadow-md"
+            >
+              <div className="inline-flex rounded-xl bg-amber-100 p-3 text-amber-700">
+                <Building2 className="h-6 w-6" />
+              </div>
+              <h3 className="mt-4 text-lg font-semibold text-slate-900 group-hover:text-emerald-700">
+                Untuk Pengusaha &amp; UMKM
+              </h3>
+              <p className="mt-1.5 text-sm text-slate-600">
+                Susun hubungan kerja yang aman dari sengketa Disnaker, hitung kompensasi/pesangon, atau ajukan konsultasi kasus.
+              </p>
+              <span className="mt-4 inline-flex items-center text-sm font-medium text-emerald-600">
+                Konsultasi &amp; solusi bisnis <ChevronRight className="ml-1 h-4 w-4" />
+              </span>
+            </Link>
+          </div>
+
+          {/* Alat Bantu Mandiri */}
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <Link
+              href="/kalkulator"
+              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 hover:border-emerald-300 hover:bg-emerald-50/40 transition-colors"
+            >
+              <Calculator className="h-5 w-5 text-emerald-600 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Kalkulator Pesangon &amp; HR</p>
+                <p className="text-xs text-slate-500">Simulasi hitungan mandiri</p>
+              </div>
+            </Link>
+            <Link
+              href="/cek-dokumen"
+              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 hover:border-emerald-300 hover:bg-emerald-50/40 transition-colors"
+            >
+              <FileCheck2 className="h-5 w-5 text-emerald-600 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Cek Kelengkapan Kontrak</p>
+                <p className="text-xs text-slate-500">Audit mandiri PKWT / PKWTT</p>
+              </div>
+            </Link>
+            <Link
+              href="/konsultasi-pro"
+              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 hover:border-emerald-300 hover:bg-emerald-50/40 transition-colors"
+            >
+              <MessageSquare className="h-5 w-5 text-emerald-600 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Konsultasi Pro</p>
+                <p className="text-xs text-slate-500">Kirim kasus kompleks terstruktur</p>
+              </div>
+            </Link>
           </div>
         </section>
 

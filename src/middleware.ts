@@ -1,39 +1,14 @@
-import { createServerClient } from '@supabase/auth-helpers-nextjs';
 import { NextResponse, type NextRequest } from 'next/server';
+import { ADMIN_TOKEN_COOKIE, API_BASE_URL } from '@/lib/api';
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  });
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return response;
+  const isAdminPath = request.nextUrl.pathname.startsWith('/admin');
+  if (!isAdminPath) {
+    return NextResponse.next();
   }
 
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value, options }) => {
-          response.cookies.set(name, value, options);
-        });
-      },
-    },
-  });
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const isAdminPath = request.nextUrl.pathname.startsWith('/admin');
-  if (isAdminPath && !user) {
+  const token = request.cookies.get(ADMIN_TOKEN_COOKIE)?.value;
+  if (!token) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set(
@@ -43,7 +18,30 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return response;
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+
+    if (!res.ok) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      url.searchParams.set(
+        'redirectTo',
+        `${request.nextUrl.pathname}${request.nextUrl.search}`
+      );
+      const response = NextResponse.redirect(url);
+      response.cookies.delete(ADMIN_TOKEN_COOKIE);
+      return response;
+    }
+  } catch {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {

@@ -1,8 +1,10 @@
 import Link from 'next/link';
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { apiFetch } from '@/lib/api';
 import { ChevronRight } from 'lucide-react';
 import { Header } from '@/components/Header';
 import type { Metadata } from 'next';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Semua Solusi',
@@ -16,54 +18,28 @@ interface Question {
   categories: { name: string } | null;
 }
 
-function normalizeCategories(cat: unknown): { name: string } | null {
-  if (!cat) return null;
-  if (Array.isArray(cat) && cat.length > 0) {
-    return { name: (cat[0] as { name?: string }).name ?? '' };
-  }
-  return cat as { name: string };
-}
-
 export default async function SolusiListPage({
   searchParams,
 }: {
   searchParams: Promise<{ kategori?: string }>;
 }) {
-  const supabase = createSupabaseServerClient();
-  const params = await searchParams; // 🔥 WAJIB {
-  // 🔥 BASE QUERY
-  let query = supabase
-    .from('questions')
-    .select('id, slug, question_text, categories ( name ), category_id')
-    .order('created_at', { ascending: false });
+  const params = await searchParams;
+  const query = params.kategori
+    ? `/api/questions?limit=100&categorySlug=${encodeURIComponent(params.kategori)}`
+    : '/api/questions?limit=100';
 
+  let questions: Question[] = [];
   let categoryName: string | null = null;
 
-  // 🔥 FILTER BERDASARKAN SLUG
-  if (params.kategori) {
-    const { data: cat } = await supabase
-      .from('categories')
-      .select('id, name')
-      .eq('slug', params.kategori) // ✅ pakai slug
-      .single();
-
-    if (cat) {
-      query = query.eq('category_id', cat.id);
-      categoryName = cat.name; // buat display
-    }
+  try {
+    const res = await apiFetch<{ data: Question[]; categoryName?: string | null }>(query, {
+      cache: 'no-store',
+    });
+    questions = res.data ?? [];
+    categoryName = res.categoryName ?? null;
+  } catch (err) {
+    console.error(err);
   }
-
-  const { data, error } = await query;
-
-  const questions: Question[] =
-    !error && data
-      ? data.map((q: any) => ({
-          id: q.id,
-          slug: q.slug,
-          question_text: q.question_text,
-          categories: normalizeCategories(q.categories),
-        }))
-      : [];
 
   return (
     <div className="min-h-screen bg-white">

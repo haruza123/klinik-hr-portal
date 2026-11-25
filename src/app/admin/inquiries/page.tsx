@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { apiFetch, getAdminTokenFromCookie } from '@/lib/api';
 import { Loader2, ChevronRight, Inbox } from 'lucide-react';
 import { Header } from '@/components/Header';
 
@@ -19,12 +19,15 @@ export default function AdminInquiriesPage() {
 
   useEffect(() => {
     const init = async () => {
-      const { data, error } = await supabase
-        .from('inquiries')
-        .select('id, question, email, created_at')
-        .order('created_at', { ascending: false });
-      if (!error) setInquiries(data ?? []);
-      setLoading(false);
+      try {
+        const token = getAdminTokenFromCookie();
+        const res = await apiFetch<{ data: Inquiry[] }>('/api/inquiries', { token });
+        setInquiries(res.data ?? []);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
     };
     void init();
   }, []);
